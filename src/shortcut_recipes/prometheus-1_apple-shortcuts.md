@@ -3,13 +3,16 @@
 > **Platform:** iOS / watchOS  
 > **Difficulty:** Beginner (No coding, just drag-and-drop)  
 > **Time:** ~15 Minutes  
-> **Prerequisites:** iPhone, Apple Watch (for HRV), Smart Lights (optional but recommended)
+> **Prerequisites:** iPhone, Apple Watch (for HRV), Smart Lights (optional)
 
 ---
 
 ## 1. Concept
 This recipe builds a **closed-loop stress regulator** using tools you already own.
-It does not use "AI" to talk to you. It uses simple math to check your biological energy (Heart Rate Variability) and modulates your environment (Lights/Sound) to match your state.
+It does not use "AI" to talk to you. It uses simple math to check your biological energy (Heart Rate Variability) and modulates your environment to match your state.
+
+**Why HRV?**
+Heart Rate Variability is the cleanest non-invasive proxy for cognitive load, autonomic balance, and recovery. When you are stressed, HRV drops.
 
 **The Math:** We calculate **Deviation**: `(Baseline - Current) / Baseline`.
 - If your HRV drops **15%**, we nudge (Yellow State).
@@ -19,14 +22,20 @@ It does not use "AI" to talk to you. It uses simple math to check your biologica
 
 ## 2. Preparation (The "Actuators")
 
-Before building the Shortcut, set up the scenes you want to trigger.
+Before building the Shortcut, set up the outputs you want to trigger.
 
-1.  **HomeKit (Lights):**
-    - Create a Scene named **"Zen Mode"**: Warm color (Amber/Orange), 40% brightness.
-    - Create a Scene named **"Focus Mode"**: Cool color (Blue/White), 80% brightness.
-2.  **Focus Modes (iOS Settings):**
-    - Ensure you have a **"Work"** focus mode set up.
-    - Ensure you have a **"Driving"** focus mode set up (for safety interlocks).
+**Option A: Smart Lights (HomeKit)**
+1.  Create a Scene named **"Zen Mode"**: Warm color (Amber/Orange), 40% brightness.
+2.  Create a Scene named **"Focus Mode"**: Cool color (Blue/White), 80% brightness.
+
+**Option B: No Smart Lights? (Fallbacks)**
+- You can use **"Set Brightness"** (dim the screen).
+- You can use **"Play Sound"** (Brown Noise).
+- You can use **"Vibrate Device"**.
+
+**Focus Modes (iOS Settings):**
+- Ensure you have a **"Work"** focus mode set up (ideal for running this automation).
+- Ensure you have a **"Driving"** focus mode set up (for safety interlocks).
 
 ---
 
@@ -41,8 +50,8 @@ Open the **Shortcuts App** and create a new Shortcut named `PROMETHEUS-1`.
 2.  **Action:** `If` [Current Focus] `Name` contains "Driving"
     * **Action:** `Stop This Shortcut`
 3.  **End If**
-4.  **Action:** `Get Motion Activity` (optional, skips if running/walking)
-    * *Logic:* If strictly sedentary, proceed. (You can skip this for v1).
+4.  **Action:** `Get Motion Activity` (optional)
+    * *Logic:* If sedentary or still, proceed. (You can skip this for v1).
 
 ### Part B: Establishing Baseline (The Alphabet)
 *We need to know what "Normal" is for YOU.*
@@ -65,10 +74,15 @@ Open the **Shortcuts App** and create a new Shortcut named `PROMETHEUS-1`.
 1.  **Action:** `Find Health Samples`
     * **Type:** Heart Rate Variability
     * **Start Date:** is in the last `1` hours
-2.  **Action:** `Calculate Statistics`
+    * **Limit:** (Leave blank)
+2.  **Action (CRITICAL FAIL-SAFE):** `If` [Health Samples] `has no value`
+    * **Action:** `Stop This Shortcut`
+    * *Why: Prevents false alarms if the watch hasn't taken a reading recently.*
+3.  **End If**
+4.  **Action:** `Calculate Statistics`
     * **Operation:** Average
     * **Input:** [Health Samples]
-3.  **Action:** `Set Variable`
+5.  **Action:** `Set Variable`
     * **Name:** `Current`
     * **Value:** [Average]
 
@@ -89,15 +103,14 @@ Open the **Shortcuts App** and create a new Shortcut named `PROMETHEUS-1`.
     * **Action:** `Show Notification`
         * **Title:** "High Cognitive Load"
         * **Body:** "Activate Zen Mode?"
-        * **Options:** Show "Run" button (Make this interactive).
+        * **Options:** Show "Run" button (Interactive).
     * *Note: We ask permission first (Guardian, not Overlord).*
-    * **Action:** `Control Home` -> Set "Zen Mode"
-    * **Action:** `Play Sound` -> Select a "Brown Noise" file or URL.
-    * **(Optional) Action:** `Vibrate Device` (Haptic Ticker).
+    * **Action:** `Control Home` -> Set "Zen Mode" OR `Play Sound` (Brown Noise).
+    * **Action:** `Vibrate Device` (Haptic Ticker).
 2.  **Otherwise**
     3.  **Action:** `If` [Deviation] is greater than `0.15` (Yellow State)
         * **Action:** `Control Home` -> Set "Zen Mode" (but maybe brighter).
-        * *Note: We do a subtle nudge without asking.*
+        * *Note: A subtle nudge without asking.*
     4.  **End If**
 3.  **End If**
 
@@ -108,10 +121,11 @@ Open the **Shortcuts App** and create a new Shortcut named `PROMETHEUS-1`.
 A Shortcut doesn't run itself. You need an Automation trigger.
 
 1.  Go to **Shortcuts > Automation**.
-2.  **Trigger:** Time of Day (e.g., "Every 1 hour" isn't native, so set 9am, 11am, 1pm, 3pm).
-    * *Alternative:* Trigger when **"Work Focus"** turns ON.
-3.  **Action:** Run Shortcut `PROMETHEUS-1`.
-4.  **Options:** Turn OFF "Ask Before Running" (except for the Red State confirmation built inside the shortcut).
+2.  **Trigger:** When **"Work" Focus** turns ON.
+    * *Why: This naturally limits the system to monitoring you only when you are working.*
+3.  **Trigger (Optional):** Time of Day (9am, 11am, 1pm, 3pm) if you don't use Focus Modes.
+4.  **Action:** Run Shortcut `PROMETHEUS-1`.
+5.  **Options:** Turn OFF "Ask Before Running" (The logic inside handles the permission).
 
 ---
 
@@ -119,7 +133,18 @@ A Shortcut doesn't run itself. You need an Automation trigger.
 
 - **"It triggers too often!"** -> Your HRV fluctuates a lot. Increase the Red Threshold to `0.40`.
 - **"It never triggers!"** -> Decrease the Threshold to `0.20`.
-- **"It's annoying me."** -> Good. That means the "Guardian" principle is working. Use the override (Stop the automation) if you need to burn the midnight oil.
+- **"It crashes!"** -> Ensure Part C (The Fail-Safe) is correctly implemented.
+- **Pro Tip (v1.1):** If you are an athlete with massive HRV swings, future versions will use "Z-Score" (Standard Deviation) instead of simple percentage deviation.
+
+---
+
+## 6. Compatibility Note
+
+**Android Users:**
+This specific recipe relies on Apple HealthKit and Shortcuts. However, the logic is universal. You can replicate this on Android using:
+- **Tasker** (Automation)
+- **Google Fit / Health Connect** (HRV Data)
+- **Hue / SmartThings** (Actuators)
 
 ---
 
