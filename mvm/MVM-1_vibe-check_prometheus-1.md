@@ -66,6 +66,59 @@ If both drop to 30ms:
 | 🔴 **RED** | > 0.30 | Acute Stress | **Intervene.** Haptic breath pacer, Brown noise. |
 | ⚫ **GREY** | (Low Motion) | Depletion | **Signal.** Suggest break/sleep. |
 
+**Pre-Checks (Fail-Safes)**  
+These guards run *before* entering the state machine:  
+- Driving Mode → Abort  
+- Missing HRV Data → Abort  
+- Workout Activity (optional) → Abort  
+
+### State Machine Diagram (MVM-1 PROMETHEUS-1)
+
+Below is the state-transition diagram used in PROMETHEUS-1.  
+This matches the HRV deviation logic and all safety interlocks.
+
+```mermaid
+stateDiagram-v2
+    %% Style Definitions
+    classDef greenState fill:#d4edda,stroke:#28a745,stroke-width:2px,color:#155724;
+    classDef yellowState fill:#fff3cd,stroke:#ffc107,stroke-width:2px,color:#856404;
+    classDef redState fill:#f8d7da,stroke:#dc3545,stroke-width:2px,color:#721c24;
+    classDef guard fill:#e2e3e5,stroke:#6c757d,stroke-width:1px,color:#383d41,stroke-dasharray: 5 5;
+
+    %% Main States
+    state "Normal State (Green)" as Green
+    state "Yellow State – Mild Drop" as Yellow
+    state "Red State – High Load" as Red
+
+    %% Notes
+    note right of Green  : HRV Deviation < 0.15
+    note right of Yellow : 0.15 < HRV Deviation < 0.30
+    note right of Red    : HRV Deviation > 0.30
+
+    %% Guards
+    state "Guard: Driving Mode Active" as Guard_Driving
+    state "Guard: No HRV Data" as Guard_NoData
+
+    %% Transitions
+    [*] --> Green
+
+    Green  --> Yellow : Deviation > 0.15
+    Yellow --> Red    : Deviation > 0.30
+    Yellow --> Green : Deviation < 0.15
+    Red    --> Green : User override\nOR next reading < 0.15
+
+    Guard_Driving --> [*] : Abort (Driving)
+    Guard_NoData   --> [*] : Abort (No HRV)
+
+    %% Styling
+    class Green greenState
+    class Yellow yellowState
+    class Red redState
+    class Guard_Driving guard
+    class Guard_NoData guard
+
+
+
 ### State Transitions
 
 ```
