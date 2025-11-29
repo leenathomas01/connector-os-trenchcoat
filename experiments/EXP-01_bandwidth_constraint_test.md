@@ -1,179 +1,254 @@
 # EXP-01: Bandwidth & Latency Stress Test (“The Narrow Pipe”)
 
-> **Part of the Connector OS Trenchcoat Experiments Suite.**
-> This experiment validates Layer 2 (CMP) and Layer 3 (Dam Logic) under real infra constraints.
-
-> **Status:** Planned / Design Phase  
-> **Origin:** Validation from r/LLMDevs (Nov 2025)  
-> **Goal:** Show how “intelligence” degrades when wiring degrades, and how Connector OS can degrade gracefully using Layers 2 and 3.
+> **Part of the Connector OS Trenchcoat Experiments Suite.**  
+> This experiment validates Layer 2 (CMP) and Layer 3 (Dam Logic) under real infra constraints.  
+> **Status:** Ready for Implementation  
+> **Origin:** Engineering validation prompt (Nov 2025)  
+> **Purpose:** Demonstrate how Connector OS maintains graceful degradation under bandwidth, latency, and queue pressure — where typical AI stacks fail catastrophically.
 
 ---
 
 ## 1. Hypothesis
 
-**The Straw Hypothesis**
+**The Straw Hypothesis**  
+Most AI stacks break not because the model is weak, but because the pipe is narrow.  
+If we:  
+- shrink bandwidth → payload cannot carry full state  
+- increase latency → presence illusion collapses  
+- flood queues → system loses prioritization  
 
-Modern AI stacks often behave like a brain trying to drink a milkshake through a coffee stirrer.  
-If we:
+…then user-perceived “intelligence” drops sharply, even with the strongest models.
 
-- shrink the pipe (lower bandwidth),
-- slow the pipe (higher latency), or
-- flood the pipe (too many concurrent calls),
+**Connector OS Prediction**  
+Connector OS should degrade smoothly, not sharply, because:  
+- Layer 2: CMP (Context Map Protocol) compresses state into compact glyphs  
+- Layer 3: Dam & Grid Logic batches, drops, routes, and mode-switches under load  
+- Real-time ↔ async transitions preserve continuity  
+- High-priority signals survive; low-priority ones spill  
 
-then **user-perceived intelligence drops**, even if the underlying model stays the same.
-
-**Connector OS Prediction**
-
-A Connector-style architecture should:
-
-- compress and normalize state via **Layer 2: CMP (Context Map Protocol)**, and  
-- route / batch / drop via **Layer 3: Dam & Grid logic**,
-
-so that the system **fails gracefully** instead of catastrophically.
+The goal isn’t perfection — it’s stability under stress.
 
 ---
 
-## 2. Stress Tests
-
-Three simple tests to probe the wiring limits.
+## 2. The Three Stress Tests
 
 ### Test A — Bandwidth Cap (“Alphabet vs Poems”)
 
-**Constraint**
+**Constraint:**  
+Limit outbound + inbound payloads (e.g., ≤ 500 bytes).
 
-Cap request payloads to e.g. **500 bytes** (or a small, configurable limit).
+**Typical Stack Behavior:**  
+- Context truncation  
+- Loss of conversational thread  
+- Sudden hallucination or drift  
+- Model appears “dumber”
 
-**Baseline (typical stack)**
+**Connector OS Behavior (expected):**  
+- Activate Layer 2 CMP  
+  - Replace long histories → short glyphs  
+    (e.g. {"state": "focus_high", "ctx": "coding_v3"})  
+- Switch to sparse prediction mode when compressed  
+- Preserve semantic continuity, not verbatim text
 
-- Full conversation history or large JSON prompts no longer fit.
-- Context is truncated ad-hoc by the client or server.
-- Model starts dropping thread or hallucinating missing state.
-
-**Connector OS behaviour (expected)**
-
-- Detects bandwidth limit.
-- Switches to **Layer 2 CMP**:
-  - Uses **state glyphs** instead of raw history  
-    (e.g. `{"state": "focus_high", "context": "coding_session_v3"}`).
-  - Relies on the “poems phase” (sparse prediction) instead of full text replay.
-
-**Metrics**
-
-- Task success rate vs. payload size (success / KB).
-- Error / hallucination rate as payload shrinks.
-
----
+**Metric:**  
+- Task success rate per KB  
+- Drift/hallucination rate vs. payload shrink
 
 ### Test B — Latency Injection (“The Lag”)
 
-**Constraint**
+**Constraint:**  
+Inject round-trip delays: 50 ms → 250 → 500 → 1000+.
 
-Inject artificial **RTT delays** into tool / model calls, e.g.:
+**Typical Stack Behavior:**  
+- Frozen UI  
+- User interrupts (“Hello?”)  
+- Conversational illusion breaks  
+- Users abandon the session
 
-- 50 ms (control)  
-- 250 ms  
-- 500 ms  
-- 1000+ ms
+**Connector OS Behavior (expected):**  
+- Latency-aware mode switching  
+  - <150ms: **Conversational Mode**  
+  - >500ms: **Async Mode** (“Processing...”, buffering)  
+- Use Layer 3 to throttle and reshape flow  
+- Maintain presence even when speed collapses
 
-**Baseline (typical stack)**
+**Metric:**  
+- User interruption events  
+- Drop-offs vs. latency band  
+- Completion rate vs. delay
 
-- UI appears “hung”.
-- User sends “are you there?” pings or abandons the interaction.
-- The conversational illusion breaks once latency crosses a threshold.
+### Test C — Queue Flood (“Dam & Spillway Logic”)
 
-**Connector OS behaviour (expected)**
+**Constraint:**  
+Simulate N concurrent requests (1 → 5 → 10 → 50+).
 
-- Monitor effective latency at **Layer 0 / Layer 3**.
-- Switch modes when latency is high:
-  - `< 150 ms`: **Conversational Mode** (live chat semantics).
-  - `> 500 ms`: **Async Mode** (buffer input, UI shows “Processing…”, responses grouped).
-- Optionally adjust **which model** is used  
-  (e.g. prefer local / cached tools when network is slow).
+**Typical Stack Behavior:**  
+- Queue overload  
+- Timeouts / 5xx errors  
+- Collapse in throughput  
+- No prioritization
 
-**Metrics**
+**Connector OS Behavior (expected):**  
+- Layer 3 Dam Logic  
+  - Spillway: drop low-priority items under pressure  
+  - Batching: merge redundant sensor inputs  
+  - Routing: send slow-path items to local/light models
 
-- User interrupt rate (extra messages like “hello?”, “?”).
-- Drop-off rate by latency band.
-- Task completion rate vs. latency.
-
----
-
-### Test C — Queue Flood (“Dam & Spillway”)
-
-**Constraint**
-
-Simulate **N concurrent requests** (e.g. 1, 5, 10, 50+) arriving within a short window.
-
-These may represent:
-
-- multiple tools firing,
-- multiple sensors reporting at once,
-- multiple user sessions.
-
-**Baseline (typical stack)**
-
-- Requests pile up in a single queue.
-- Throughput collapses, timeouts and 5xx errors spike.
-- No explicit notion of priority or graceful dropping.
-
-**Connector OS behaviour (expected)**
-
-- **Layer 3 Dam logic** activates:
-  - **Spillway:** drop or defer low-priority signals  
-    (e.g. “ambient environment updates”) when queue depth is high.
-  - **Batching:** merge repeated sensor signals into summaries  
-    (e.g. 10 HRV samples → one “stress ↑” event).
-- Optionally route some work to cheaper / local models.
-
-**Metrics**
-
-- Uptime vs. queue depth.
-- Median / p95 latency per priority class.
-- Information loss: how much high-priority signal is preserved under load.
+**Metric:**  
+- Uptime vs. queue depth  
+- Priority fidelity  
+- Latency per class (high vs. low priority)
 
 ---
 
-## 3. Simple Wrapper for Simulation
+## 3. Minimal Simulation Wrapper (Python)
 
-A minimal Python wrapper to simulate the three constraints around any LLM API:
+This wrapper simulates:  
+✓ bandwidth limits  
+✓ latency injection  
+✓ queue pressure  
+to evaluate Connector OS adaptive behavior.
 
 ```python
 import time
 import json
+from collections import deque
 
-def compress_to_glyph(prompt: str) -> str:
+# --- Layer 2: CMP (Compression Stub) ---
+
+def compress_to_glyph(prompt: str, limit: int = 500) -> str:
     """
-    Layer 2 CMP stub.
-    In a real system, this would map rich state -> compact glyph.
-    Here we just truncate and tag it.
+    Simplified CMP:
+    Convert rich text -> compact state glyph.
+    Real implementation would map state transitions directly.
     """
+    encoded = prompt.encode("utf-8")
+    if len(encoded) <= limit:
+        return prompt
     return json.dumps({
-        "state_delta": "example",
-        "context_excerpt": prompt[:120]
+        "state": "compressed",
+        "excerpt": prompt[:limit // 2],
+        "meta": "truncated"
     })
 
-def connector_request(
-    prompt: str,
-    bandwidth_limit: int | None = None,
-    latency_delay: float = 0.0,
-    queue_depth: int = 1,
-):
-    # --- Test C: queue flood handling ---
-    if queue_depth > 10:
-        # Simple spillway + batching stub
-        prompt = "[BATCHED] " + prompt[:200]
 
-    # --- Test B: latency injection ---
-    if latency_delay > 0:
-        time.sleep(latency_delay)
-        if latency_delay > 0.5:
-            print("UI signal: switch to ASYNC mode")
+# --- Layer 3: Dam Logic (Spillway + Batching) ---
 
-    # --- Test A: bandwidth cap ---
-    payload = prompt
-    if bandwidth_limit is not None and len(prompt.encode("utf-8")) > bandwidth_limit:
-        payload = compress_to_glyph(prompt)
+class DamLogic:
+    def __init__(self, max_queue: int = 10):
+        self.queue = deque(maxlen=max_queue)
+        self.max_queue = max_queue
 
-    # In a real setup, call the actual model:
-    # return llm_call(payload)
-    return f"MOCK_LLM_CALL payload_bytes={len(payload.encode('utf-8'))}"
+    def process(self, request: str, priority: int = 1):
+        """
+        High priority (>=2) always admitted.
+        Low priority dropped when overflow occurs.
+        """
+        if len(self.queue) >= self.max_queue and priority < 2:
+            return None  # Spillway drop
+        self.queue.append(request)
+        return f"Processed (depth={len(self.queue)})"
+
+
+# --- Combined Narrow Pipe Simulator ---
+
+class NarrowPipe:
+    def __init__(self):
+        self.dam = DamLogic(max_queue=10)
+
+    def test_bandwidth(self, prompt: str, limit: int = 500):
+        payload = compress_to_glyph(prompt, limit)
+        return f"Payload bytes={len(payload.encode('utf-8'))}"
+
+    def test_latency(self, delay_ms: float = 0.0):
+        time.sleep(delay_ms / 1000)
+        mode = "ASYNC" if delay_ms > 500 else "REALTIME"
+        return f"Mode={mode}, latency={delay_ms}ms"
+
+    def test_queue(self, prompt: str, priority: int = 1):
+        result = self.dam.process(prompt, priority)
+        return result or "Dropped (spillway)"
+
+
+# Example run:
+
+if __name__ == "__main__":
+    np = NarrowPipe()
+    print(np.test_bandwidth("X" * 2000))
+    print(np.test_latency(600))
+    print(np.test_queue("urgent", priority=2))
+```
+
+```mermaid
+graph TD
+    subgraph Input_Stream ["Incoming Flood"]
+        Req1[High Priority Request]
+        Req2[Low Priority Sensor Data]
+        Req3[Low Priority Ambient Noise]
+        Req4[High Priority User Command]
+    end
+
+    subgraph Layer_3_Dam ["Layer 3: Dam Logic"]
+        Queue{Queue Full?}
+        Spillway[Spillway: Drop Data]
+        Process[Process Queue]
+    end
+
+    Req1 --> Queue
+    Req2 --> Queue
+    Req3 --> Queue
+    Req4 --> Queue
+
+    Queue -- "Yes (Full) & Low Priority" --> Spillway
+    Queue -- "No (Space) OR High Priority" --> Process
+
+    Spillway -.-> Loss[Graceful Degradation]
+    Process --> Model[Layer 6: AI Model]
+
+    style Spillway fill:#f9f,stroke:#333,stroke-width:2px
+    style Process fill:#bbf,stroke:#333,stroke-width:2px
+```
+
+**The Physics Analogy**  
+This diagram perfectly illustrates the "Dam & Spillway" concept. Just like a hydroelectric dam manages water pressure, Connector OS manages information pressure. When the reservoir (Queue) is full, the Spillway opens to release the excess (Low Priority Data) safely, ensuring the Generator (The AI Model) doesn't get destroyed by the flood.
+
+---
+
+## 4. Expected Outcomes
+
+**Connector OS vs. Traditional Stack:**
+
+| Stress             | Traditional AI              | Connector OS                  |
+|--------------------|-----------------------------|-------------------------------|
+| Bandwidth cap     | Sudden thread loss          | CMP preserves state via glyphs |
+| Latency spike     | Frozen UX, frustration      | Mode-switch to async, stable UX |
+| Queue flood       | Timeouts, collapse          | Spillway + batching, graceful loss |
+
+Connector OS should show smooth degradation curves rather than catastrophic breaks.
+
+---
+
+## 5. Contribution Path
+
+**Developers**  
+- Replace mock calls with real LLM APIs  
+- Add structured glyph compression  
+- Integrate latency-aware UI  
+
+**Researchers**  
+- Add new metrics (signal fidelity, cognitive flow continuity)  
+- Run cross-model comparisons  
+
+**Everyone**  
+- Star the repo  
+- Share results or extensions  
+
+---
+
+## 6. Why This Matters
+
+This experiment reframes the AGI debate:  
+It’s not “Can the model think?”  
+It’s “Can the wiring carry the thought?”  
+
+Connector OS is our proposal for a wiring-first architecture.  
