@@ -139,6 +139,12 @@ Index: `docs/03_mvm_index.md`
 
 ---
 
+## 🧪 Experiments & Validation
+
+We validate Connector Theory by stressing the "wiring" to see how intelligence degrades.
+
+- **[EXP-01: Bandwidth & Latency Stress Test](experiments/EXP-01_bandwidth_constraint_test.md)** *The "Narrow Pipe" Test.* Validates that Layer 2 (CMP) and Layer 3 (Dam Logic) preserve task success even when bandwidth is capped or latency spikes.
+
 ## Quickstart
 
 The fastest way to understand Connector OS is to **build MVM-1** (the HRV-based state-awareness module).
